@@ -58,7 +58,7 @@ python3 txt2mp3srt.py 旁白稿資料夾 -o 輸出 --srt-only --max-len 20 --kee
 - `txt2mp3srt-windows.zip`：解壓縮後雙擊 `txt2mp3srt.exe`
 - `txt2mp3srt-macos.zip`：解壓縮後得到 `txt2mp3srt.app`（Apple Silicon M 系列晶片）
 
-推送 `v1.0` 這類 tag 時，也會自動建立 Release 並附上這兩個檔案。
+正式版請到 repo 右側的 **Releases** 下載。要發布新版本：**Actions → Build app → Run workflow**，填入版本號（例如 `v1.1`）即可，會自動打包並建立 Release（推送 `v*` tag 也可以）。
 
 程式沒有經過程式碼簽章，第一次開啟時：
 - Windows 若出現「Windows 已保護您的電腦」：按「其他資訊」→「仍要執行」
