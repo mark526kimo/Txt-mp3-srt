@@ -50,3 +50,25 @@ python3 txt2mp3srt.py 旁白稿資料夾 -o 輸出 --srt-only --max-len 20 --kee
 - txt 編碼自動判斷（UTF-8 / UTF-16 / Big5 / GB18030）
 - 遇到 429 / 5xx 自動重試，API Key 錯誤（401）立即停止，按 Ctrl+C 可中斷
 - 有失敗的檔案時結束碼為 1，方便排程或腳本判斷
+
+## 桌面應用程式（`app.py`）
+
+有視窗介面的版本，功能與網頁版相同，另有「只重做字幕（不扣額度）」按鈕。設定會存在 `~/.txt2mp3srt.json`（API Key 需勾選「記住」才會存）。
+
+**下載打包好的程式**：GitHub repo 的 **Actions → Build app** → 最新一次執行 → 頁面下方 Artifacts：
+- `txt2mp3srt-windows.zip`：解壓縮後雙擊 `txt2mp3srt.exe`
+- `txt2mp3srt-macos.zip`：解壓縮後得到 `txt2mp3srt.app`（Apple Silicon M 系列晶片）
+
+推送 `v1.0` 這類 tag 時，也會自動建立 Release 並附上這兩個檔案。
+
+程式沒有經過程式碼簽章，第一次開啟時：
+- Windows 若出現「Windows 已保護您的電腦」：按「其他資訊」→「仍要執行」
+- macOS 若出現「無法打開」：在 app 上按右鍵 →「打開」→ 再按「打開」
+
+**自己打包**（需要在目標作業系統上執行）：
+```bash
+pip install pyinstaller certifi
+pyinstaller --onefile --windowed --name txt2mp3srt --hidden-import certifi app.py   # Windows
+pyinstaller --windowed --name txt2mp3srt --hidden-import certifi app.py             # macOS
+```
+直接執行原始碼：`python3 app.py`

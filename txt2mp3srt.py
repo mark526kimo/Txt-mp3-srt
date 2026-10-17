@@ -14,6 +14,7 @@ import base64
 import json
 import os
 import re
+import ssl
 import sys
 import time
 import urllib.error
@@ -24,6 +25,12 @@ from pathlib import Path
 MAX_CHARS = 9000  # v4 單次上限約 10,000 字元，留餘裕
 ALIGN_DIR = ".align"  # 存放時間軸，供 --srt-only 重做字幕
 RETRY_STATUS = {429, 500, 502, 503}
+
+try:  # 打包成應用程式時沒有系統憑證，改用 certifi
+    import certifi
+    SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    SSL_CTX = None
 
 
 # ---------- 切段（送 API 用） ----------
@@ -71,7 +78,7 @@ def tts(text, voice, key, model, fmt, with_ts):
         req = urllib.request.Request(url, data=body, method="POST", headers={
             "xi-api-key": key, "Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=600) as res:
+            with urllib.request.urlopen(req, timeout=600, context=SSL_CTX) as res:
                 data = res.read()
         except urllib.error.HTTPError as e:
             if e.code in RETRY_STATUS and attempt < 5:
@@ -284,7 +291,11 @@ def write_srt(path, align, args):
     path.write_text("﻿" + build_srt(align, args.max_len, args.keep_punct), encoding="utf-8")
 
 
-def convert(f, out_dir, key, args):
+class Stopped(Exception):
+    pass
+
+
+def convert(f, out_dir, key, args, log=print, should_stop=None):
     text = read_text(f)
     if not text:
         raise ValueError("空檔")
@@ -294,8 +305,10 @@ def convert(f, out_dir, key, args):
     offset = 0.0
     chunks = split_text(text)
     for k, chunk in enumerate(chunks, 1):
+        if should_stop and should_stop():
+            raise Stopped("已停止")
         if len(chunks) > 1:
-            print(f"    第 {k}/{len(chunks)} 段…", flush=True)
+            log(f"    第 {k}/{len(chunks)} 段…")
         audio, a = tts(chunk, args.voice, key, args.model, args.format, with_ts)
         parts.append(audio)
         if align is not None:
@@ -311,13 +324,12 @@ def convert(f, out_dir, key, args):
             dur = mp3_duration(audio)
             offset += dur if dur is not None else (a["character_end_times_seconds"][-1] if n else 0)
 
-    stem = out_dir / f.stem
-    stem.with_suffix(".mp3").write_bytes(b"".join(parts))
+    (out_dir / f"{f.stem}.mp3").write_bytes(b"".join(parts))
     if align is not None:
         adir = out_dir / ALIGN_DIR
         adir.mkdir(exist_ok=True)
         (adir / f"{f.stem}.json").write_text(json.dumps(align, ensure_ascii=False), encoding="utf-8")
-        write_srt(stem.with_suffix(".srt"), align, args)
+        write_srt(out_dir / f"{f.stem}.srt", align, args)
     return len(text)
 
 
