@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>旁白稿批次轉 MP3 + SRT（ElevenLabs）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7385; --line:#e2e5ec;
+    --accent:#4f46e5; --accent-t:#fff; --ok:#16a34a; --err:#dc2626; --warn:#d97706;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#14161c; --card:#1d2029; --text:#e8eaf0; --muted:#98a0b3; --line:#2c303c;
+      --accent:#7c83ff; --accent-t:#10121a; --ok:#4ade80; --err:#f87171; --warn:#fbbf24; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;line-height:1.5}
+  .wrap{max-width:860px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:22px;margin:4px 0 4px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+  .card h2{font-size:15px;margin:0 0 12px}
+  label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+  input[type=text],input[type=password],input[type=number],select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:600px){.row{grid-template-columns:1fr}}
+  button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:9px 14px;font-size:14px}
+  button.primary{background:var(--accent);color:var(--accent-t);border-color:var(--accent);font-weight:600}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin-top:10px;flex-wrap:wrap}
+  .chk input{width:auto}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{font-size:12px;color:var(--muted);font-weight:600}
+  td.num{color:var(--muted);white-space:nowrap}
+  td.name{word-break:break-all}
+  .st{font-size:13px;white-space:nowrap}
+  .st.wait{color:var(--muted)} .st.run{color:var(--warn)} .st.done{color:var(--ok)} .st.err{color:var(--err)}
+  .bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:12px}
+  .bar>div{height:100%;width:0;background:var(--accent);transition:width .3s}
+  .small{font-size:12px;color:var(--muted)}
+  .log{font-size:12px;color:var(--err);margin-top:6px;white-space:pre-wrap}
+  a.dl{color:var(--accent);text-decoration:none;font-size:13px;cursor:pointer;margin-right:8px;white-space:nowrap}
+  .empty{color:var(--muted);text-align:center;padding:18px 0;font-size:14px}
+  pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;max-height:260px;overflow:auto;white-space:pre-wrap;margin:10px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>旁白稿批次轉 MP3 + SRT</h1>
+  <div class="sub">選擇含有 .txt 旁白稿的資料夾，用 ElevenLabs 一次轉成 MP3，並依語音時間軸自動產生 SRT 字幕。</div>
+
+  <div class="card">
+    <h2>① ElevenLabs 設定</h2>
+    <label>API Key</label>
+    <input type="password" id="apiKey" placeholder="貼上你的 ElevenLabs API Key" autocomplete="off">
+    <div class="chk"><input type="checkbox" id="remember"><label for="remember" style="margin:0">記住在這台電腦的瀏覽器（只存在本機）</label></div>
+    <div class="row">
+      <div>
+        <label>Voice ID</label>
+        <input type="text" id="voiceId" placeholder="例如 s3TPKV1kjDlVtZbl4Ksh">
+      </div>
+      <div>
+        <label>模型</label>
+        <select id="modelId">
+          <option value="eleven_v4" selected>Eleven v4（最擬真，單次上限約 1 萬字）</option>
+          <option value="eleven_v3">Eleven v3</option>
+          <option value="eleven_multilingual_v2">Multilingual v2</option>
+          <option value="eleven_flash_v2_5">Flash v2.5（快速、較便宜）</option>
+        </select>
+      </div>
+    </div>
+    <label>輸出品質</label>
+    <select id="fmt">
+      <option value="mp3_44100_128" selected>MP3 44.1kHz 128kbps（建議）</option>
+      <option value="mp3_44100_192">MP3 44.1kHz 192kbps（需較高方案）</option>
+      <option value="mp3_44100_64">MP3 44.1kHz 64kbps（較小檔）</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <h2>② 字幕設定</h2>
+    <div class="chk" style="margin-top:0"><input type="checkbox" id="makeSrt" checked><label for="makeSrt" style="margin:0">同時產生 SRT 字幕（使用 ElevenLabs 時間軸，不額外扣額度）</label></div>
+    <div class="row">
+      <div>
+        <label>每行字幕最多字數</label>
+        <input type="number" id="maxLen" min="6" max="80" value="18">
+      </div>
+      <div>
+        <label>標點符號</label>
+        <select id="punct">
+          <option value="strip" selected>去除句尾標點，句中逗號改空格（常見字幕格式）</option>
+          <option value="keep">保留原文標點</option>
+        </select>
+      </div>
+    </div>
+    <div class="small" style="margin-top:8px">遇到句號、問號、驚嘆號、換行一定斷句；逗號處依長度斷句。轉換後修改這些設定，下載時會自動套用，不需重新轉換。</div>
+  </div>
+
+  <div class="card">
+    <h2>③ 選擇旁白稿</h2>
+    <div class="btns">
+      <button id="pickFolder">📁 選擇資料夾</button>
+      <button id="pickFiles">📄 選擇多個 txt</button>
+      <button id="clearAll">清空</button>
+    </div>
+    <input type="file" id="folderInput" webkitdirectory multiple hidden>
+    <input type="file" id="fileInput" accept=".txt,text/plain" multiple hidden>
+    <div class="chk" id="dirRow" style="display:none">
+      <button id="pickOut">💾 選擇輸出資料夾（轉完直接存檔）</button>
+      <span id="outName" class="small">未選擇：轉完後可用下方按鈕下載</span>
+    </div>
+    <div id="listWrap" style="margin-top:12px"></div>
+    <pre class="preview" id="preview" hidden></pre>
+  </div>
+
+  <div class="card">
+    <h2>④ 開始轉換</h2>
+    <div class="btns">
+      <button class="primary" id="start" disabled>開始轉換</button>
+      <button id="stop" disabled>停止</button>
+      <button id="zipBtn" disabled>下載全部（ZIP）</button>
+    </div>
+    <div class="bar"><div id="prog"></div></div>
+    <div class="small" id="summary" style="margin-top:8px"></div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="small">API Key 只會從你的瀏覽器直接送到 ElevenLabs，不會經過其他伺服器。已完成的檔案再按「開始」會自動跳過。</div>
+</div>
+
+<script>
+const MAX_CHARS = 9000; // v4 單次上限約 10,000 字元，留餘裕
+const $ = id => document.getElementById(id);
+let items = [];            // {name, text, status, blob, align, msg}
+let running = false, stopFlag = false;
+let outDir = null;
+
+// ---------- 儲存設定 ----------
+const SETTINGS = ['voiceId','modelId','fmt','maxLen','punct'];
+try{
+  const k = localStorage.getItem('el_key');
+  if(k){ $('apiKey').value = k; $('remember').checked = true; }
+  for(const id of SETTINGS){ const v = localStorage.getItem('el_'+id); if(v) $(id).value = v; }
+  const s = localStorage.getItem('el_makeSrt'); if(s) $('makeSrt').checked = s === '1';
+}catch(e){}
+function saveSettings(){
+  try{
+    if($('remember').checked) localStorage.setItem('el_key', $('apiKey').value.trim());
+    else localStorage.removeItem('el_key');
+    for(const id of SETTINGS) localStorage.setItem('el_'+id, $(id).value.trim());
+    localStorage.setItem('el_makeSrt', $('makeSrt').checked ? '1' : '0');
+  }catch(e){}
+}
+['maxLen','punct','makeSrt'].forEach(id => $(id).addEventListener('change', () => { saveSettings(); render(); }));
+
+// ---------- 選檔 ----------
+$('pickFolder').onclick = () => $('folderInput').click();
+$('pickFiles').onclick = () => $('fileInput').click();
+$('folderInput').onchange = e => addFiles(e.target.files);
+$('fileInput').onchange = e => addFiles(e.target.files);
+$('clearAll').onclick = () => { if(running) return; items = []; $('preview').hidden = true; render(); };
+
+if(window.showDirectoryPicker){ $('dirRow').style.display = 'flex'; }
+$('pickOut').onclick = async () => {
+  try{
+    outDir = await window.showDirectoryPicker({mode:'readwrite'});
+    $('outName').textContent = '輸出到：' + outDir.name;
+  }catch(e){}
+};
+
+async function addFiles(fileList){
+  const files = [...fileList].filter(f => /\.txt$/i.test(f.name));
+  files.sort((a,b) => a.name.localeCompare(b.name, 'zh-Hant', {numeric:true}));
+  for(const f of files){
+    if(items.some(it => it.name === f.name)) continue;
+    let text = (await f.text()).replace(/^﻿/, '').replace(/\r\n?/g, '\n').trim();
+    items.push({name:f.name, text, status: text ? 'wait' : 'err', blob:null, align:null, msg: text ? '' : '空檔'});
+  }
+  $('folderInput').value = ''; $('fileInput').value = '';
+  render();
+}
+
+// ---------- 顯示 ----------
+const LABEL = {wait:'等待中', run:'轉換中…', done:'✔ 完成', err:'✘ 失敗'};
+function render(){
+  const w = $('listWrap');
+  if(!items.length){
+    w.innerHTML = '<div class="empty">尚未選擇檔案</div>';
+  }else{
+    let h = '<table><thead><tr><th>#</th><th>檔名</th><th>字數</th><th>狀態</th><th></th></tr></thead><tbody>';
+    items.forEach((it,i)=>{
+      const links = it.blob ? `<a class="dl" data-i="${i}" data-k="mp3">MP3</a>` +
+        (it.align ? `<a class="dl" data-i="${i}" data-k="srt">SRT</a><a class="dl" data-i="${i}" data-k="pv">預覽</a>` : '') : '';
+      h += `<tr><td class="num">${i+1}</td><td class="name">${esc(it.name)}</td><td class="num">${it.text.length}</td>
+        <td class="st ${it.status}">${LABEL[it.status]}${it.msg && it.status==='err' ? '（'+esc(it.msg)+'）':''}</td>
+        <td>${links}</td></tr>`;
+    });
+    h += '</tbody></table>';
+    const total = items.reduce((s,it)=>s+it.text.length,0);
+    h += `<div class="small" style="margin-top:8px">共 ${items.length} 個檔案、約 ${total.toLocaleString()} 字元（會依字元數扣 ElevenLabs 額度）</div>`;
+    w.innerHTML = h;
+    w.querySelectorAll('a.dl').forEach(a => a.onclick = () => {
+      const it = items[+a.dataset.i];
+      if(a.dataset.k === 'mp3') saveBlob(it.blob, baseName(it.name) + '.mp3');
+      else if(a.dataset.k === 'srt') saveBlob(srtBlob(it), baseName(it.name) + '.srt');
+      else { const p = $('preview'); p.textContent = buildSrt(it.align); p.hidden = false; p.scrollIntoView({block:'nearest'}); }
+    });
+  }
+  const done = items.filter(i=>i.status==='done').length;
+  $('start').disabled = running || !items.some(i=>i.status!=='done' && i.text);
+  $('stop').disabled = !running;
+  $('zipBtn').disabled = done === 0 || running;
+  $('prog').style.width = items.length ? (done/items.length*100)+'%' : '0';
+  $('summary').textContent = items.length ? `已完成 ${done} / ${items.length}` : '';
+}
+function esc(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ---------- 切段（送 API 用） ----------
+function splitText(text){
+  if(text.length <= MAX_CHARS) return [text];
+  const chunks = []; let buf = '';
+  const push = p => { if(buf.length + p.length + 1 > MAX_CHARS && buf){ chunks.push(buf); buf=''; } buf += p + '\n'; };
+  for(const para of text.split('\n')){
+    if(para.length <= MAX_CHARS){ push(para); continue; }
+    let cur = '';
+    for(const ch of para){
+      cur += ch;
+      if('。！？.!?'.includes(ch) && cur.length > MAX_CHARS*0.6){ push(cur); cur=''; }
+    }
+    if(cur) push(cur);
+  }
+  if(buf.trim()) chunks.push(buf);
+  return chunks;
+}
+
+// ---------- 呼叫 API ----------
+async function tts(text, voice, key, model, fmt, withTs){
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}` +
+    (withTs ? '/with-timestamps' : '') + `?output_format=${fmt}`;
+  for(let attempt=1; attempt<=5; attempt++){
+    const res = await fetch(url, {
+      method:'POST',
+      headers:{'xi-api-key':key,'Content-Type':'application/json'},
+      body: JSON.stringify({text, model_id:model})
+    });
+    if(res.ok){
+      if(!withTs) return {audio: await res.arrayBuffer(), align: null};
+      const j = await res.json();
+      return {audio: b64ToBuf(j.audio_base64), align: j.alignment || j.normalized_alignment || null};
+    }
+    if([429,500,502,503].includes(res.status) && attempt<5){
+      await new Promise(r => setTimeout(r, 2000*attempt)); continue;
+    }
+    let detail = '';
+    try{ const j = await res.json(); detail = j.detail?.message || JSON.stringify(j.detail||j); }catch(e){}
+    throw new Error(`${res.status} ${detail}`.slice(0,200));
+  }
+}
+function b64ToBuf(b64){
+  const bin = atob(b64), u = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u[i] = bin.charCodeAt(i);
+  return u.buffer;
+}
+
+// 取得音檔實際長度，讓分段後的字幕時間能正確接續
+let audioCtx = null;
+async function audioDuration(buf, fallback){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ab = await audioCtx.decodeAudioData(buf.slice(0));
+    return ab.duration;
+  }catch(e){ return fallback; }
+}
+
+$('start').onclick = async () => {
+  const key = $('apiKey').value.trim(), voice = $('voiceId').value.trim();
+  if(!key || !voice){ $('log').textContent = '請先填入 API Key 與 Voice ID'; return; }
+  saveSettings();
+  $('log').textContent = '';
+  running = true; stopFlag = false; render();
+  const model = $('modelId').value, fmt = $('fmt').value, withTs = $('makeSrt').checked;
+
+  for(const it of items){
+    if(stopFlag) break;
+    if(it.status==='done' || !it.text) continue;
+    it.status = 'run'; it.msg=''; render();
+    try{
+      const parts = [];
+      const align = withTs ? {chars:[], starts:[], ends:[]} : null;
+      let offset = 0;
+      for(const c of splitText(it.text)){
+        if(stopFlag) throw new Error('已停止');
+        const r = await tts(c, voice, key, model, fmt, withTs);
+        parts.push(r.audio);
+        if(align){
+          if(!r.align) throw new Error('API 未回傳時間軸，無法產生字幕');
+          const a = r.align, n = a.characters.length;
+          for(let i=0;i<n;i++){
+            align.chars.push(a.characters[i]);
+            align.starts.push(a.character_start_times_seconds[i] + offset);
+            align.ends.push(a.character_end_times_seconds[i] + offset);
+          }
+          align.chars.push('\n'); align.starts.push(offset); align.ends.push(offset); // 段落分隔
+          offset += await audioDuration(r.audio, n ? a.character_end_times_seconds[n-1] : 0);
+        }
+      }
+      it.blob = new Blob(parts, {type:'audio/mpeg'});
+      it.align = align;
+      it.status = 'done';
+      if(outDir){
+        await writeOut(baseName(it.name) + '.mp3', it.blob);
+        if(it.align) await writeOut(baseName(it.name) + '.srt', srtBlob(it));
+      }
+    }catch(e){
+      it.status = 'err'; it.msg = e.message;
+      $('log').textContent += `${it.name}：${e.message}\n`;
+      if(/^401/.test(e.message)){ stopFlag = true; }
+    }
+    render();
+  }
+  running = false; render();
+};
+$('stop').onclick = () => { stopFlag = true; };
+async function writeOut(name, blob){
+  const fh = await outDir.getFileHandle(name, {create:true});
+  const w = await fh.createWritable(); await w.write(blob); await w.close();
+}
+
+// ---------- 產生 SRT ----------
+const STRONG = '。！？!?；;…';
+const WEAK = '，,、：:';
+const CLOSERS = '」』”’）)】》"\'';
+function isSentenceEnd(chars, i){
+  const ch = chars[i];
+  if(STRONG.includes(ch)) return true;
+  if(ch === '.'){ const nx = chars[i+1]; return nx === undefined || /\s/.test(nx); } // 避免把 3.5 切開
+  return false;
+}
+function buildCues(align, maxLen){
+  const {chars, starts, ends} = align;
+  const cues = []; let cur = []; // [{ch,s,e}]
+  const vis = arr => arr.reduce((n,c) => n + (/\s/.test(c.ch) ? 0 : 1), 0);
+  const flush = () => {
+    const t = cur.filter(c => !/\s/.test(c.ch));
+    if(t.length) cues.push({text: cur.map(c=>c.ch).join('').replace(/\s+/g,' ').trim(), start: t[0].s, end: t[t.length-1].e});
+    cur = [];
+  };
+  let pending = false;
+  for(let i=0;i<chars.length;i++){
+    const ch = chars[i];
+    if(pending){
+      if(CLOSERS.includes(ch) || STRONG.includes(ch)){ cur.push({ch, s:starts[i], e:ends[i]}); continue; }
+      flush(); pending = false;
+    }
+    if(ch === '\n'){ flush(); continue; }
+    if(!cur.length && /\s/.test(ch)) continue;
+    cur.push({ch, s:starts[i], e:ends[i]});
+    if(isSentenceEnd(chars, i)){ pending = true; continue; }
+    const len = vis(cur);
+    if(WEAK.includes(ch) && len >= maxLen * 0.6){ flush(); continue; }
+    if(len > maxLen){
+      // 超過長度：往回找逗號或空白斷開，找不到就硬切
+      let cut = -1;
+      for(let j=cur.length-2; j>0; j--){
+        if(WEAK.includes(cur[j].ch) || /\s/.test(cur[j].ch)){ if(vis(cur.slice(0,j+1)) >= maxLen*0.3) cut = j; break; }
+      }
+      if(cut < 0) cut = cur.length - 2;
+      const rest = cur.slice(cut+1);
+      cur = cur.slice(0, cut+1); flush(); cur = rest;
+    }
+  }
+  flush();
+  // 避免時間重疊、長度為零
+  for(let i=0;i<cues.length;i++){
+    const nx = cues[i+1];
+    if(nx && cues[i].end > nx.start) cues[i].end = nx.start;
+    if(cues[i].end <= cues[i].start) cues[i].end = cues[i].start + 0.3;
+  }
+  return cues;
+}
+function cleanText(t){
+  if($('punct').value === 'keep') return t;
+  return t.replace(/[，、,；;：:]+(?=.)/g, ' ')
+          .replace(/[。，、,．.；;：:]+([」』”’）)】》"']*)$/, '$1')
+          .replace(/\s+/g, ' ').trim();
+}
+function srtTime(sec){
+  const ms = Math.max(0, Math.round(sec*1000));
+  const p = (n,w=2) => String(n).padStart(w,'0');
+  return `${p(Math.floor(ms/3600000))}:${p(Math.floor(ms/60000)%60)}:${p(Math.floor(ms/1000)%60)},${p(ms%1000,3)}`;
+}
+function buildSrt(align){
+  const maxLen = Math.max(6, parseInt($('maxLen').value, 10) || 18);
+  return buildCues(align, maxLen)
+    .map(c => ({...c, text: cleanText(c.text)}))
+    .filter(c => c.text)
+    .map((c,i) => `${i+1}\n${srtTime(c.start)} --> ${srtTime(c.end)}\n${c.text}\n`)
+    .join('\n');
+}
+function srtBlob(it){ return new Blob(['﻿' + buildSrt(it.align)], {type:'application/x-subrip;charset=utf-8'}); }
+
+// ---------- 下載 ----------
+function baseName(n){ return n.replace(/\.txt$/i, ''); }
+function saveBlob(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+$('zipBtn').onclick = async () => {
+  if(typeof JSZip === 'undefined'){ $('log').textContent = 'ZIP 套件載入失敗，請確認網路後重新整理'; return; }
+  const zip = new JSZip();
+  items.filter(i=>i.blob).forEach(i => {
+    zip.file(baseName(i.name) + '.mp3', i.blob);
+    if(i.align) zip.file(baseName(i.name) + '.srt', srtBlob(i));
+  });
+  saveBlob(await zip.generateAsync({type:'blob'}), '旁白_mp3_srt.zip');
+};
+
+render();
+</script>
+</body>
+</html>
