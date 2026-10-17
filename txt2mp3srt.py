@@ -170,8 +170,30 @@ def _is_sentence_end(chars, i):
     return False
 
 
+def strip_tags(align):
+    """去除 [excited]、[whispers] 這類語氣標籤（語音會照標籤表現，但字幕不顯示）。"""
+    c = align["chars"]
+    out = {"chars": [], "starts": [], "ends": []}
+    i = 0
+    while i < len(c):
+        if c[i] == "[":
+            j = i + 1
+            while j < len(c) and j - i <= 40 and c[j] not in "]\n[":
+                j += 1
+            inner = "".join(c[i + 1:j])
+            if j < len(c) and c[j] == "]" and inner and all(ch.isalpha() or ch in " '-" for ch in inner):
+                i = j + 1
+                continue
+        out["chars"].append(c[i])
+        out["starts"].append(align["starts"][i])
+        out["ends"].append(align["ends"][i])
+        i += 1
+    return out
+
+
 def build_cues(align, max_len):
-    chars, starts, ends = align["chars"], align["starts"], align["ends"]
+    a = strip_tags(align)
+    chars, starts, ends = a["chars"], a["starts"], a["ends"]
     cues, cur = [], []  # cur: [(ch, s, e)]
 
     def vis(arr):

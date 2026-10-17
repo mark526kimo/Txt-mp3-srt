@@ -357,8 +357,21 @@ function isSentenceEnd(chars, i){
   if(ch === '.'){ const nx = chars[i+1]; return nx === undefined || /\s/.test(nx); } // 避免把 3.5 切開
   return false;
 }
+// 去除 [excited]、[whispers] 這類語氣標籤（語音會照標籤表現，但字幕不顯示）
+function stripTags(align){
+  const out = {chars:[], starts:[], ends:[]}, c = align.chars;
+  for(let i=0;i<c.length;i++){
+    if(c[i] === '['){
+      let j = i+1;
+      while(j < c.length && j-i <= 40 && c[j] !== ']' && c[j] !== '\n' && c[j] !== '[') j++;
+      if(c[j] === ']' && j > i+1 && /^[\p{L}\s'-]+$/u.test(c.slice(i+1, j).join(''))){ i = j; continue; }
+    }
+    out.chars.push(c[i]); out.starts.push(align.starts[i]); out.ends.push(align.ends[i]);
+  }
+  return out;
+}
 function buildCues(align, maxLen){
-  const {chars, starts, ends} = align;
+  const {chars, starts, ends} = stripTags(align);
   const cues = []; let cur = []; // [{ch,s,e}]
   const vis = arr => arr.reduce((n,c) => n + (/\s/.test(c.ch) ? 0 : 1), 0);
   const flush = () => {
