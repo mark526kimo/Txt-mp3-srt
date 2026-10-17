@@ -19,6 +19,7 @@ import txt2mp3srt as core
 APP_NAME = "旁白稿轉 MP3 + SRT"
 CONFIG = Path.home() / ".txt2mp3srt.json"
 MODELS = [
+    ("eleven_v4_turbo", "Eleven v4 Turbo"),
     ("eleven_v4", "Eleven v4（最擬真）"),
     ("eleven_v3", "Eleven v3"),
     ("eleven_multilingual_v2", "Multilingual v2"),
@@ -72,7 +73,7 @@ class App:
         self.key = tk.StringVar(value=cfg.get("api_key", ""))
         self.remember = tk.BooleanVar(value=bool(cfg.get("api_key")))
         self.voice = tk.StringVar(value=cfg.get("voice", ""))
-        self.model = tk.StringVar(value=self._label(MODELS, cfg.get("model", "eleven_v4")))
+        self.model = tk.StringVar(value=self._label(MODELS, cfg.get("model", "eleven_v4_turbo")))
         self.fmt = tk.StringVar(value=self._label(FORMATS, cfg.get("format", "mp3_44100_128")))
         ttk.Label(box, text="API Key").grid(row=0, column=0, sticky="w")
         ttk.Entry(box, textvariable=self.key, show="•").grid(row=0, column=1, columnspan=2, sticky="ew", padx=6)

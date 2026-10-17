@@ -339,8 +339,8 @@ def main():
     ap.add_argument("-o", "--out", help="輸出資料夾（預設：與 txt 同一個資料夾）")
     ap.add_argument("-k", "--api-key", help="API Key（預設讀環境變數 ELEVENLABS_API_KEY）")
     ap.add_argument("-v", "--voice", help="Voice ID（或環境變數 ELEVENLABS_VOICE_ID）")
-    ap.add_argument("-m", "--model", default="eleven_v4",
-                    help="eleven_v4（預設）/ eleven_v3 / eleven_multilingual_v2 / eleven_flash_v2_5")
+    ap.add_argument("-m", "--model", default="eleven_v4_turbo",
+                    help="eleven_v4_turbo（預設）/ eleven_v4 / eleven_v3 / eleven_multilingual_v2 / eleven_flash_v2_5")
     ap.add_argument("-f", "--format", default="mp3_44100_128",
                     help="mp3_44100_128（預設）/ mp3_44100_192 / mp3_44100_64")
     ap.add_argument("--max-len", type=int, default=18, help="每行字幕最多字數（預設 18，英文建議 35–45）")

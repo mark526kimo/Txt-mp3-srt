@@ -6,7 +6,7 @@
 
 ## 功能
 - 選擇資料夾或多個 `.txt`，依檔名自然排序批次轉換
-- 支援 Eleven v4 / v3 / Multilingual v2 / Flash v2.5
+- 支援 Eleven v4 Turbo / v4 / v3 / Multilingual v2 / Flash v2.5
 - 超過約 9,000 字自動分段，再合併成一個 MP3
 - 使用 ElevenLabs `with-timestamps` 時間軸自動產生 `.srt`（不額外扣額度）
   - 句號／問號／驚嘆號／換行一定斷句，逗號依長度斷句
@@ -39,7 +39,7 @@ python3 txt2mp3srt.py 旁白稿資料夾 -o 輸出 --srt-only --max-len 20 --kee
 |---|---|
 | `-o, --out` | 輸出資料夾（預設與 txt 同一個資料夾） |
 | `-k, --api-key` / `-v, --voice` | 未指定時讀 `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` |
-| `-m, --model` | `eleven_v4`（預設）、`eleven_v3`、`eleven_multilingual_v2`、`eleven_flash_v2_5` |
+| `-m, --model` | `eleven_v4_turbo`（預設）、`eleven_v4`、`eleven_v3`、`eleven_multilingual_v2`、`eleven_flash_v2_5` |
 | `-f, --format` | `mp3_44100_128`（預設）、`mp3_44100_192`、`mp3_44100_64` |
 | `--max-len` | 每行字幕最多字數（預設 18） |
 | `--keep-punct` | 字幕保留原文標點 |
