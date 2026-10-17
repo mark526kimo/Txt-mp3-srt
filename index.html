@@ -129,11 +129,11 @@
     <div class="log" id="log"></div>
   </div>
 
-  <div class="small">API Key 只會從你的瀏覽器直接送到 ElevenLabs，不會經過其他伺服器。已完成的檔案再按「開始」會自動跳過。</div>
+  <div class="small">API Key 只會從你的瀏覽器直接送到 ElevenLabs，不會經過其他伺服器。已完成的檔案再按「開始」會自動跳過；轉到一半失敗的檔案會從中斷的段落繼續，不重複扣額度。手機上轉換時請保持畫面開啟、不要切換 App。</div>
 </div>
 
 <script>
-const MAX_CHARS = 9000; // v4 單次上限約 10,000 字元，留餘裕
+const MAX_CHARS = 2000; // 每次送出的字數；API 上限約 1 萬字，但分小段在手機上較不易斷線，失敗也只需重送該段
 const $ = id => document.getElementById(id);
 let items = [];            // {name, text, status, blob, align, msg}
 let running = false, stopFlag = false;
@@ -196,7 +196,7 @@ function render(){
       const links = it.blob ? `<a class="dl" data-i="${i}" data-k="mp3">MP3</a>` +
         (it.align ? `<a class="dl" data-i="${i}" data-k="srt">SRT</a><a class="dl" data-i="${i}" data-k="pv">預覽</a>` : '') : '';
       h += `<tr><td class="num">${i+1}</td><td class="name">${esc(it.name)}</td><td class="num">${it.text.length}</td>
-        <td class="st ${it.status}">${LABEL[it.status]}${it.msg && it.status==='err' ? '（'+esc(it.msg)+'）':''}</td>
+        <td class="st ${it.status}">${LABEL[it.status]}${it.msg && it.status!=='done' ? '（'+esc(it.msg)+'）':''}</td>
         <td>${links}</td></tr>`;
     });
     h += '</tbody></table>';
@@ -242,15 +242,23 @@ async function tts(text, voice, key, model, fmt, withTs){
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}` +
     (withTs ? '/with-timestamps' : '') + `?output_format=${fmt}`;
   for(let attempt=1; attempt<=5; attempt++){
-    const res = await fetch(url, {
-      method:'POST',
-      headers:{'xi-api-key':key,'Content-Type':'application/json'},
-      body: JSON.stringify({text, model_id:model})
-    });
-    if(res.ok){
-      if(!withTs) return {audio: await res.arrayBuffer(), align: null};
-      const j = await res.json();
-      return {audio: b64ToBuf(j.audio_base64), align: j.alignment || j.normalized_alignment || null};
+    let res;
+    try{
+      res = await fetch(url, {
+        method:'POST',
+        headers:{'xi-api-key':key,'Content-Type':'application/json'},
+        body: JSON.stringify({text, model_id:model})
+      });
+      if(res.ok){
+        if(!withTs) return {audio: await res.arrayBuffer(), align: null};
+        const j = await res.json();
+        return {audio: b64ToBuf(j.audio_base64), align: j.alignment || j.normalized_alignment || null};
+      }
+    }catch(e){
+      // 網路中斷（Safari 顯示 Load failed、Chrome 顯示 Failed to fetch）：等一下再重送
+      if(stopFlag) throw new Error('已停止');
+      if(attempt < 5){ await new Promise(r => setTimeout(r, 3000*attempt)); continue; }
+      throw new Error(`連線中斷（${e.message}）。手機上轉換時請保持畫面開啟、不要切換 App，再按「開始轉換」從中斷處繼續`);
     }
     if([429,500,502,503].includes(res.status) && attempt<5){
       await new Promise(r => setTimeout(r, 2000*attempt)); continue;
@@ -283,6 +291,8 @@ $('start').onclick = async () => {
   $('log').textContent = '';
   running = true; stopFlag = false; render();
   const model = $('modelId').value, fmt = $('fmt').value, withTs = $('makeSrt').checked;
+  let wakeLock = null; // 轉換中避免手機螢幕自動關閉
+  try{ wakeLock = await navigator.wakeLock?.request('screen'); }catch(e){}
 
   for(const it of items){
     if(stopFlag) break;
@@ -292,9 +302,15 @@ $('start').onclick = async () => {
       const parts = [];
       const align = withTs ? {chars:[], starts:[], ends:[]} : null;
       let offset = 0;
-      for(const c of splitText(it.text)){
+      const chunks = splitText(it.text);
+      // 已成功的段落先留著，重試時不重送、不重複扣額度
+      const cacheKey = [voice, model, fmt, withTs].join('|');
+      if(it.cacheKey !== cacheKey){ it.cacheKey = cacheKey; it.cache = {}; }
+      for(let k=0; k<chunks.length; k++){
+        const c = chunks[k];
         if(stopFlag) throw new Error('已停止');
-        const r = await tts(c, voice, key, model, fmt, withTs);
+        if(chunks.length > 1){ it.msg = `第 ${k+1}/${chunks.length} 段`; render(); }
+        const r = it.cache[c] || (it.cache[c] = await tts(c, voice, key, model, fmt, withTs));
         parts.push(r.audio);
         if(align){
           if(!r.align) throw new Error('API 未回傳時間軸，無法產生字幕');
@@ -310,7 +326,7 @@ $('start').onclick = async () => {
       }
       it.blob = new Blob(parts, {type:'audio/mpeg'});
       it.align = align;
-      it.status = 'done';
+      it.status = 'done'; it.msg = ''; it.cache = null; it.cacheKey = null;
       if(outDir){
         await writeOut(baseName(it.name) + '.mp3', it.blob);
         if(it.align) await writeOut(baseName(it.name) + '.srt', srtBlob(it));
@@ -322,6 +338,7 @@ $('start').onclick = async () => {
     }
     render();
   }
+  try{ await wakeLock?.release(); }catch(e){}
   running = false; render();
 };
 $('stop').onclick = () => { stopFlag = true; };
