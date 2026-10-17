@@ -72,7 +72,7 @@ class App:
         box.columnconfigure(3, weight=1)
         self.key = tk.StringVar(value=cfg.get("api_key", ""))
         self.remember = tk.BooleanVar(value=bool(cfg.get("api_key")))
-        self.voice = tk.StringVar(value=cfg.get("voice", ""))
+        self.voice = tk.StringVar(value=cfg.get("voice") or core.DEFAULT_VOICE)
         self.model = tk.StringVar(value=self._label(MODELS, cfg.get("model", "eleven_v4_turbo")))
         self.fmt = tk.StringVar(value=self._label(FORMATS, cfg.get("format", "mp3_44100_128")))
         ttk.Label(box, text="API Key").grid(row=0, column=0, sticky="w")

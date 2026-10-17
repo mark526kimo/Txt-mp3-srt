@@ -5,7 +5,7 @@
 
 範例：
   export ELEVENLABS_API_KEY=xxxx
-  python3 txt2mp3srt.py 旁白稿資料夾 -v s3TPKV1kjDlVtZbl4Ksh
+  python3 txt2mp3srt.py 旁白稿資料夾
   python3 txt2mp3srt.py a.txt b.txt -v VOICE -o 輸出 --max-len 16
   python3 txt2mp3srt.py 旁白稿資料夾 -o 輸出 --srt-only --max-len 20   # 只依已存時間軸重做字幕，不扣額度
 """
@@ -25,6 +25,7 @@ from pathlib import Path
 MAX_CHARS = 9000  # v4 單次上限約 10,000 字元，留餘裕
 ALIGN_DIR = ".align"  # 存放時間軸，供 --srt-only 重做字幕
 RETRY_STATUS = {429, 500, 502, 503}
+DEFAULT_VOICE = "B5GGvFKlvZE2sF6uc1zX"
 
 try:  # 打包成應用程式時沒有系統憑證，改用 certifi
     import certifi
@@ -338,7 +339,7 @@ def main():
     ap.add_argument("inputs", nargs="+", help="txt 檔或資料夾（資料夾會包含子資料夾）")
     ap.add_argument("-o", "--out", help="輸出資料夾（預設：與 txt 同一個資料夾）")
     ap.add_argument("-k", "--api-key", help="API Key（預設讀環境變數 ELEVENLABS_API_KEY）")
-    ap.add_argument("-v", "--voice", help="Voice ID（或環境變數 ELEVENLABS_VOICE_ID）")
+    ap.add_argument("-v", "--voice", help=f"Voice ID（預設：環境變數 ELEVENLABS_VOICE_ID，或 {DEFAULT_VOICE}）")
     ap.add_argument("-m", "--model", default="eleven_v4_turbo",
                     help="eleven_v4_turbo（預設）/ eleven_v4 / eleven_v3 / eleven_multilingual_v2 / eleven_flash_v2_5")
     ap.add_argument("-f", "--format", default="mp3_44100_128",
@@ -373,7 +374,7 @@ def main():
         return
 
     key = args.api_key or os.environ.get("ELEVENLABS_API_KEY")
-    args.voice = args.voice or os.environ.get("ELEVENLABS_VOICE_ID")
+    args.voice = args.voice or os.environ.get("ELEVENLABS_VOICE_ID") or DEFAULT_VOICE
     if not key or not args.voice:
         sys.exit("請提供 API Key（-k 或 ELEVENLABS_API_KEY）與 Voice ID（-v 或 ELEVENLABS_VOICE_ID）")
 

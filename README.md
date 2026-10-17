@@ -23,7 +23,6 @@ API Key 只從瀏覽器直接送到 ElevenLabs，勾選「記住」才會存在�
 
 ```bash
 export ELEVENLABS_API_KEY=你的key
-export ELEVENLABS_VOICE_ID=s3TPKV1kjDlVtZbl4Ksh   # 或每次用 -v 指定
 
 # 轉整個資料夾（含子資料夾），MP3 / SRT 存在 txt 旁邊
 python3 txt2mp3srt.py 旁白稿資料夾
@@ -38,7 +37,7 @@ python3 txt2mp3srt.py 旁白稿資料夾 -o 輸出 --srt-only --max-len 20 --kee
 | 參數 | 說明 |
 |---|---|
 | `-o, --out` | 輸出資料夾（預設與 txt 同一個資料夾） |
-| `-k, --api-key` / `-v, --voice` | 未指定時讀 `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` |
+| `-k, --api-key` / `-v, --voice` | 未指定時讀 `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`；Voice 預設 `B5GGvFKlvZE2sF6uc1zX` |
 | `-m, --model` | `eleven_v4_turbo`（預設）、`eleven_v4`、`eleven_v3`、`eleven_multilingual_v2`、`eleven_flash_v2_5` |
 | `-f, --format` | `mp3_44100_128`（預設）、`mp3_44100_192`、`mp3_44100_64` |
 | `--max-len` | 每行字幕最多字數（預設 18） |
