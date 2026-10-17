@@ -56,9 +56,13 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          path: src
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
+      - run: cp src/index.html txt2mp3srt-web.html
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
@@ -74,7 +78,8 @@ jobs:
             - Windows 出現「Windows 已保護您的電腦」→ 按「其他資訊」→「仍要執行」
             - macOS 出現「無法打開」→ 在 app 上按右鍵 →「打開」→ 再按「打開」
 
-            網頁版請下載下方 Source code 裡的 `index.html`，用 Chrome 或 Edge 開啟。
+            - **網頁版**：下載 `txt2mp3srt-web.html`，用 Chrome 或 Edge 開啟
           files: |
             txt2mp3srt-windows.zip
             txt2mp3srt-macos.zip
+            txt2mp3srt-web.html
