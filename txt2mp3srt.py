@@ -15,6 +15,7 @@ import json
 import os
 import re
 import ssl
+import subprocess
 import sys
 import time
 import urllib.error
@@ -71,10 +72,13 @@ class ApiError(Exception):
         self.status = status
 
 
-def tts(text, voice, key, model, fmt, with_ts):
+def tts(text, voice, key, model, fmt, with_ts, voice_settings=None):
     url = (f"https://api.elevenlabs.io/v1/text-to-speech/{urllib.parse.quote(voice, safe='')}"
            + ("/with-timestamps" if with_ts else "") + f"?output_format={fmt}")
-    body = json.dumps({"text": text, "model_id": model}).encode()
+    payload = {"text": text, "model_id": model}
+    if voice_settings:
+        payload["voice_settings"] = voice_settings
+    body = json.dumps(payload).encode()
     for attempt in range(1, 6):
         req = urllib.request.Request(url, data=body, method="POST", headers={
             "xi-api-key": key, "Content-Type": "application/json"})
@@ -102,6 +106,68 @@ def tts(text, voice, key, model, fmt, with_ts):
             return data, None
         j = json.loads(data)
         return base64.b64decode(j["audio_base64"]), j.get("alignment") or j.get("normalized_alignment")
+
+
+# ---------- 音色 ----------
+VOICE_SETTING_KEYS = ("speed", "stability", "similarity_boost", "style")
+DEFAULT_VOICE_SETTINGS = {"speed": 1.0, "stability": 0.5, "similarity_boost": 0.75, "style": 0.0}
+
+
+def _get_json(path, key):
+    req = urllib.request.Request("https://api.elevenlabs.io" + path, headers={"xi-api-key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as res:
+            return json.loads(res.read())
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            d = json.loads(e.read()).get("detail", {})
+            detail = (d.get("status") or d.get("message") or "") if isinstance(d, dict) else str(d)
+        except Exception:
+            pass
+        if e.code == 401 and "permission" in detail.lower():
+            raise ApiError(e.code, "此 Key 沒有這項權限")
+        raise ApiError(e.code, "API Key 無效" if e.code == 401 else (detail or "查詢失敗"))
+    except urllib.error.URLError as e:
+        raise ApiError("網路錯誤", str(e.reason))
+
+
+def list_voices(key):
+    """帳號可用的音色，回傳 [{"id", "name", "category"}]，依名稱排序。"""
+    j = _get_json("/v1/voices", key)
+    voices = [{"id": v["voice_id"], "name": v.get("name") or v["voice_id"], "category": v.get("category") or ""}
+              for v in j.get("voices", [])]
+    return sorted(voices, key=lambda v: v["name"].lower())
+
+
+def get_voice_settings(key, voice):
+    """音色在 ElevenLabs 上儲存的設定；缺的欄位用 API 預設值補上。"""
+    j = _get_json(f"/v1/voices/{urllib.parse.quote(voice, safe='')}/settings", key)
+    return {k: float(j[k]) if j.get(k) is not None else DEFAULT_VOICE_SETTINGS[k] for k in VOICE_SETTING_KEYS}
+
+
+def resolve_voice(key, voice):
+    """-v 可以給音色名稱：在帳號音色中找同名者（不分大小寫），找不到就當作 ID。"""
+    if re.fullmatch(r"[A-Za-z0-9]{20}", voice):  # 已經是 Voice ID
+        return voice
+    try:
+        for v in list_voices(key):
+            if v["name"].lower() == voice.lower():
+                return v["id"]
+    except Exception:  # 查不到清單就當作 ID
+        pass
+    return voice
+
+
+def preview_text(text, limit=150):
+    """取開頭一兩句當試聽文字（約 limit 字內，在句尾切開）。"""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = max((text.rfind(p, 0, limit) for p in "。！？!?\n"), default=-1)
+    if cut < limit * 0.3:
+        cut = max((text.rfind(p, 0, limit) for p in "，,、；; "), default=-1)
+    return text[:cut + 1].strip() if cut > 0 else text[:limit]
 
 
 # ---------- 剩餘額度 ----------
@@ -364,7 +430,8 @@ def convert(f, out_dir, key, args, log=print, should_stop=None):
             raise Stopped("已停止")
         if len(chunks) > 1:
             log(f"    第 {k}/{len(chunks)} 段…")
-        audio, a = tts(chunk, args.voice, key, args.model, args.format, with_ts)
+        audio, a = tts(chunk, args.voice, key, args.model, args.format, with_ts,
+                       getattr(args, "voice_settings", None))
         parts.append(audio)
         if align is not None:
             if not a:
@@ -390,10 +457,11 @@ def convert(f, out_dir, key, args, log=print, should_stop=None):
 
 def main():
     ap = argparse.ArgumentParser(description="旁白稿批次轉 MP3 + SRT（ElevenLabs）")
-    ap.add_argument("inputs", nargs="+", help="txt 檔或資料夾（資料夾會包含子資料夾）")
+    ap.add_argument("inputs", nargs="*", help="txt 檔或資料夾（資料夾會包含子資料夾）")
     ap.add_argument("-o", "--out", help="輸出資料夾（預設：與 txt 同一個資料夾）")
     ap.add_argument("-k", "--api-key", help="API Key（預設讀環境變數 ELEVENLABS_API_KEY）")
-    ap.add_argument("-v", "--voice", help=f"Voice ID（預設：環境變數 ELEVENLABS_VOICE_ID，或 {DEFAULT_VOICE}）")
+    ap.add_argument("-v", "--voice", help=f"音色名稱或 Voice ID（預設：環境變數 ELEVENLABS_VOICE_ID，或 {DEFAULT_VOICE}）")
+    ap.add_argument("--list-voices", action="store_true", help="列出帳號裡的音色名稱與 ID")
     ap.add_argument("-m", "--model", default="eleven_v4_turbo",
                     help="eleven_v4_turbo（預設）/ eleven_v4 / eleven_v3 / eleven_multilingual_v2 / eleven_flash_v2_5")
     ap.add_argument("-f", "--format", default="mp3_44100_128",
@@ -403,10 +471,29 @@ def main():
     ap.add_argument("--no-srt", action="store_true", help="只產生 MP3")
     ap.add_argument("--srt-only", action="store_true", help="只依已存的時間軸重做 SRT，不呼叫 API、不扣額度")
     ap.add_argument("--force", action="store_true", help="已存在的 MP3 也重新轉換")
+    vs = ap.add_argument_group("聲音調整（沒指定的項目沿用音色在 ElevenLabs 上的設定）")
+    vs.add_argument("--speed", type=float, help="語速 0.7–1.2（1.0 為正常）")
+    vs.add_argument("--stability", type=float, help="穩定度 0–1（越高越平穩，越低越有起伏）")
+    vs.add_argument("--similarity", type=float, help="相似度 0–1（越高越貼近原音色）")
+    vs.add_argument("--style", type=float, help="風格強度 0–1（越高情緒越誇張）")
+    ap.add_argument("--preview", nargs="?", const="", metavar="文字",
+                    help="試聽：只轉一小段存成「試聽.mp3」。不給文字就取第一個 txt 的開頭一兩句")
     args = ap.parse_args()
 
+    key = args.api_key or os.environ.get("ELEVENLABS_API_KEY")
+
+    if args.list_voices:
+        if not key:
+            sys.exit("請提供 API Key（-k 或 ELEVENLABS_API_KEY）")
+        try:
+            for v in list_voices(key):
+                print(f"{v['id']}  {v['name']}" + (f"（{v['category']}）" if v["category"] else ""))
+        except ApiError as e:
+            sys.exit(f"無法取得音色清單：{str(e).split(' ', 1)[-1]}")
+        return
+
     files = collect_files(args.inputs)
-    if not files:
+    if not files and not (args.preview is not None and args.preview):
         sys.exit("找不到任何 .txt 檔")
 
     def out_dir_for(f):
@@ -427,10 +514,43 @@ def main():
         print(f"完成 {ok} / {len(files)}")
         return
 
-    key = args.api_key or os.environ.get("ELEVENLABS_API_KEY")
     args.voice = args.voice or os.environ.get("ELEVENLABS_VOICE_ID") or DEFAULT_VOICE
     if not key or not args.voice:
         sys.exit("請提供 API Key（-k 或 ELEVENLABS_API_KEY）與 Voice ID（-v 或 ELEVENLABS_VOICE_ID）")
+    args.voice = resolve_voice(key, args.voice)
+
+    overrides = {"speed": args.speed, "stability": args.stability,
+                 "similarity_boost": args.similarity, "style": args.style}
+    overrides = {k: v for k, v in overrides.items() if v is not None}
+    args.voice_settings = None
+    if overrides:
+        try:
+            base = get_voice_settings(key, args.voice)
+        except Exception:
+            base = dict(DEFAULT_VOICE_SETTINGS)
+        args.voice_settings = {**base, **overrides}
+        print("聲音調整：" + "、".join(f"{k}={v:g}" for k, v in args.voice_settings.items()))
+
+    if args.preview is not None:
+        text = args.preview or preview_text(read_text(files[0]))
+        out = Path(args.out) if args.out else (files[0].parent if files else Path.cwd())
+        out.mkdir(parents=True, exist_ok=True)
+        print(f"試聽（{len(text)} 字）：{text}")
+        try:
+            audio, _ = tts(text, args.voice, key, args.model, args.format, False, args.voice_settings)
+        except ApiError as e:
+            sys.exit(f"試聽失敗：{e}")
+        path = out / "試聽.mp3"
+        path.write_bytes(audio)
+        print(f"已存成 {path}")
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)])
+        except Exception:
+            pass
+        return
 
     total_chars = sum(len(read_text(f)) for f in files)
     print(f"共 {len(files)} 個檔案、約 {total_chars:,} 字元（會依字元數扣 ElevenLabs 額度）")
@@ -445,6 +565,8 @@ def main():
                 sys.exit("已取消")
     except ApiError as e:
         print(f"額度：{str(e).split(' ', 1)[-1]}")
+    except Exception:  # 查不到額度不影響轉換
+        print("額度：無法查詢")
 
     done = skipped = 0
     errors = []
@@ -473,7 +595,7 @@ def main():
     if done:
         try:
             print(format_quota(get_quota(key)))
-        except ApiError:
+        except Exception:
             pass
     for name, msg in errors:
         print(f"  {name}：{msg}")

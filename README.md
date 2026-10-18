@@ -7,6 +7,9 @@
 ## 功能
 - 選擇資料夾或多個 `.txt`，依檔名自然排序批次轉換
 - 支援 Eleven v4 Turbo / v4 / v3 / Multilingual v2 / Flash v2.5
+- **音色下拉選單**：填入 API Key 後自動載入帳號裡的音色，用名稱選擇；也可以直接輸入 Voice ID
+- **聲音調整**：語速（0.7–1.2）、穩定度、相似度、風格強度。預設沿用音色在 ElevenLabs 上的設定，動過滑桿才會套用，按「重設」回到音色設定
+- **試聽**：正式轉換前先轉一小段（預設取第一個檔案的開頭一兩句，可自行修改）確認聲音，只扣這一小段的額度
 - 超過約 9,000 字自動分段，再合併成一個 MP3
 - 使用 ElevenLabs `with-timestamps` 時間軸自動產生 `.srt`（不額外扣額度）
   - 句號／問號／驚嘆號／換行一定斷句，逗號依長度斷句
@@ -34,6 +37,9 @@ python3 txt2mp3srt.py 旁白稿資料夾
 # 指定輸出資料夾、模型、字幕長度
 python3 txt2mp3srt.py a.txt b.txt -o 輸出 -m eleven_v3 --max-len 16
 
+# 用音色名稱、放慢語速，先試聽一小段
+python3 txt2mp3srt.py 旁白稿資料夾 -v "我的旁白" --speed 0.9 --preview
+
 # 不滿意字幕斷句？只重做 SRT，不呼叫 API、不扣額度
 python3 txt2mp3srt.py 旁白稿資料夾 -o 輸出 --srt-only --max-len 20 --keep-punct
 ```
@@ -49,6 +55,9 @@ python3 txt2mp3srt.py 旁白稿資料夾 -o 輸出 --srt-only --max-len 20 --kee
 | `--no-srt` | 只產生 MP3 |
 | `--srt-only` | 依 `.align/` 裡存的時間軸重做 SRT |
 | `--force` | 已存在的 MP3 也重新轉換（預設會跳過） |
+| `--list-voices` | 列出帳號裡的音色名稱與 ID |
+| `--preview [文字]` | 試聽：只轉一小段存成 `試聽.mp3`（不給文字就取第一個 txt 的開頭一兩句） |
+| `--speed` / `--stability` / `--similarity` / `--style` | 聲音調整；沒指定的項目沿用音色在 ElevenLabs 上的設定 |
 
 - txt 編碼自動判斷（UTF-8 / UTF-16 / Big5 / GB18030）
 - 遇到 429 / 5xx 自動重試，API Key 錯誤（401）立即停止，按 Ctrl+C 可中斷
@@ -57,7 +66,7 @@ python3 txt2mp3srt.py 旁白稿資料夾 -o 輸出 --srt-only --max-len 20 --kee
 
 ## 桌面應用程式（`app.py`）
 
-有視窗介面的版本，功能與網頁版相同，另有「只重做字幕（不扣額度）」按鈕。設定會存在 `~/.txt2mp3srt.json`（API Key 需勾選「記住」才會存）。
+有視窗介面的版本，功能與網頁版相同（含音色選單、聲音調整、試聽；試聽會用系統預設的播放器播放），另有「只重做字幕（不扣額度）」按鈕。設定會存在 `~/.txt2mp3srt.json`（API Key 需勾選「記住」才會存）。
 
 **下載打包好的程式**：GitHub repo 的 **Actions → Build app** → 最新一次執行 → 頁面下方 Artifacts：
 - `txt2mp3srt-windows.zip`：解壓縮後雙擊 `txt2mp3srt.exe`

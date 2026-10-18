@@ -9,6 +9,7 @@
   :root{
     --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7385; --line:#e2e5ec;
     --accent:#4f46e5; --accent-t:#fff; --ok:#16a34a; --err:#dc2626; --warn:#d97706;
+    color-scheme:light dark;
   }
   @media (prefers-color-scheme: dark){
     :root{ --bg:#14161c; --card:#1d2029; --text:#e8eaf0; --muted:#98a0b3; --line:#2c303c;
@@ -48,6 +49,13 @@
   .quota b{color:var(--text);font-size:15px}
   .quota .low{color:var(--err)}
   .quota button{padding:4px 10px;font-size:12px}
+  input[type=range]{width:100%;accent-color:var(--accent);margin:4px 0 0}
+  .sl label{display:flex;justify-content:space-between;gap:8px}
+  .sl label b{color:var(--text);font-weight:600}
+  .vsbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--muted)}
+  .vsbar button{padding:4px 10px;font-size:12px}
+  textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:14px;resize:vertical}
+  audio{width:100%;margin-top:10px}
   pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;max-height:260px;overflow:auto;white-space:pre-wrap;margin:10px 0 0}
 </style>
 </head>
@@ -63,8 +71,9 @@
     <div class="chk"><input type="checkbox" id="remember"><label for="remember" style="margin:0">記住在這台電腦的瀏覽器（只存在本機）</label></div>
     <div class="row">
       <div>
-        <label>Voice ID</label>
-        <input type="text" id="voiceId" value="B5GGvFKlvZE2sF6uc1zX" placeholder="例如 B5GGvFKlvZE2sF6uc1zX">
+        <label>音色</label>
+        <select id="voiceSel"><option value="">填入 API Key 後載入音色清單</option></select>
+        <input type="text" id="voiceId" value="B5GGvFKlvZE2sF6uc1zX" placeholder="或直接輸入 Voice ID" style="margin-top:6px" aria-label="Voice ID">
       </div>
       <div>
         <label>模型</label>
@@ -87,7 +96,25 @@
   </div>
 
   <div class="card">
-    <h2>② 字幕設定</h2>
+    <h2>② 聲音調整與試聽</h2>
+    <div class="row">
+      <div class="sl"><label for="speed">語速（0.7 慢 – 1.2 快）<b id="v_speed"></b></label><input type="range" id="speed" min="0.7" max="1.2" step="0.05"></div>
+      <div class="sl"><label for="stability">穩定度（高＝平穩，低＝起伏大）<b id="v_stability"></b></label><input type="range" id="stability" min="0" max="1" step="0.05"></div>
+      <div class="sl"><label for="similarity_boost">相似度（越高越像原音色）<b id="v_similarity_boost"></b></label><input type="range" id="similarity_boost" min="0" max="1" step="0.05"></div>
+      <div class="sl"><label for="style">風格強度（越高情緒越誇張）<b id="v_style"></b></label><input type="range" id="style" min="0" max="1" step="0.05"></div>
+    </div>
+    <div class="vsbar"><span id="vsNote">使用音色在 ElevenLabs 上的設定</span><button id="vsReset">重設為音色設定</button></div>
+    <label for="pvText">試聽文字</label>
+    <textarea id="pvText" rows="3" placeholder="選擇旁白稿後會自動帶入第一個檔案的開頭一兩句，也可以自己輸入"></textarea>
+    <div class="btns" style="align-items:center">
+      <button id="pvBtn">🔊 試聽</button>
+      <span class="small" id="pvNote">只轉這一小段，依字數扣額度</span>
+    </div>
+    <audio id="pvAudio" controls hidden></audio>
+  </div>
+
+  <div class="card">
+    <h2>③ 字幕設定</h2>
     <div class="chk" style="margin-top:0"><input type="checkbox" id="makeSrt" checked><label for="makeSrt" style="margin:0">同時產生 SRT 字幕（使用 ElevenLabs 時間軸，不額外扣額度）</label></div>
     <div class="row">
       <div>
@@ -106,7 +133,7 @@
   </div>
 
   <div class="card">
-    <h2>③ 選擇旁白稿</h2>
+    <h2>④ 選擇旁白稿</h2>
     <div class="btns">
       <button id="pickFolder">📁 選擇資料夾</button>
       <button id="pickFiles">📄 選擇多個 txt</button>
@@ -123,7 +150,7 @@
   </div>
 
   <div class="card">
-    <h2>④ 開始轉換</h2>
+    <h2>⑤ 開始轉換</h2>
     <div class="btns">
       <button class="primary" id="start" disabled>開始轉換</button>
       <button id="stop" disabled>停止</button>
@@ -186,6 +213,7 @@ async function addFiles(fileList){
     items.push({name:f.name, text, status: text ? 'wait' : 'err', blob:null, align:null, msg: text ? '' : '空檔'});
   }
   $('folderInput').value = ''; $('fileInput').value = '';
+  fillPreviewText();
   render();
 }
 
@@ -243,7 +271,7 @@ function splitText(text){
 }
 
 // ---------- 呼叫 API ----------
-async function tts(text, voice, key, model, fmt, withTs){
+async function tts(text, voice, key, model, fmt, withTs, voiceSettings){
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voice)}` +
     (withTs ? '/with-timestamps' : '') + `?output_format=${fmt}`;
   for(let attempt=1; attempt<=5; attempt++){
@@ -252,7 +280,7 @@ async function tts(text, voice, key, model, fmt, withTs){
       res = await fetch(url, {
         method:'POST',
         headers:{'xi-api-key':key,'Content-Type':'application/json'},
-        body: JSON.stringify({text, model_id:model})
+        body: JSON.stringify(voiceSettings ? {text, model_id:model, voice_settings:voiceSettings} : {text, model_id:model})
       });
       if(res.ok){
         if(!withTs) return {audio: await res.arrayBuffer(), align: null};
@@ -290,6 +318,11 @@ async function audioDuration(buf, fallback){
 }
 
 // ---------- 剩餘額度 ----------
+// 查詢類請求最多等 15 秒，避免卡住轉換
+function fetchWithTimeout(url, opts={}, ms=15000){
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  return fetch(url, {...opts, signal: ctl.signal}).finally(() => clearTimeout(t));
+}
 let quota = null; // {left, used, limit}
 async function refreshQuota(){
   const key = $('apiKey').value.trim(), el = $('quota');
@@ -297,7 +330,7 @@ async function refreshQuota(){
   if(!key){ el.textContent = '填入 API Key 後顯示剩餘額度'; return; }
   el.textContent = '查詢額度中…';
   try{
-    const res = await fetch('https://api.elevenlabs.io/v1/user/subscription', {headers:{'xi-api-key':key}});
+    const res = await fetchWithTimeout('https://api.elevenlabs.io/v1/user/subscription', {headers:{'xi-api-key':key}});
     if(!res.ok){
       let d = ''; try{ const j = await res.json(); d = j.detail?.status || j.detail?.message || ''; }catch(e){}
       el.textContent = res.status === 401 && /permission/i.test(d) ? '此 Key 沒有讀取額度的權限（轉換不受影響）'
@@ -315,19 +348,121 @@ async function refreshQuota(){
   }catch(e){ el.textContent = '無法查詢額度（網路錯誤）'; }
 }
 $('quotaBtn').onclick = refreshQuota;
-$('apiKey').addEventListener('change', refreshQuota);
+$('apiKey').addEventListener('change', () => { refreshQuota(); loadVoices(); loadVoiceSettings(); });
+
+// ---------- 音色清單 ----------
+async function apiGet(path){
+  const res = await fetchWithTimeout('https://api.elevenlabs.io' + path, {headers:{'xi-api-key': $('apiKey').value.trim()}});
+  if(!res.ok) throw new Error(res.status);
+  return res.json();
+}
+async function loadVoices(){
+  const sel = $('voiceSel'), cur = $('voiceId').value.trim();
+  if(!$('apiKey').value.trim()){ sel.innerHTML = '<option value="">填入 API Key 後載入音色清單</option>'; return; }
+  sel.innerHTML = '<option value="">載入音色清單中…</option>';
+  try{
+    const voices = (await apiGet('/v1/voices')).voices || [];
+    voices.sort((a,b) => (a.name||'').localeCompare(b.name||'', 'zh-Hant'));
+    let h = '<option value="">— 從帳號選擇音色 —</option>';
+    if(cur && !voices.some(v => v.voice_id === cur)) h += `<option value="${esc(cur)}">目前輸入的 ID：${esc(cur)}</option>`;
+    for(const v of voices) h += `<option value="${esc(v.voice_id)}">${esc(v.name || v.voice_id)}${v.category ? '（'+esc(v.category)+'）' : ''}</option>`;
+    sel.innerHTML = h; sel.value = cur;
+  }catch(e){
+    sel.innerHTML = `<option value="">無法載入音色清單（${e.message === '401' ? 'Key 沒有讀取音色的權限' : '錯誤 ' + esc(e.message)}），請直接輸入 ID</option>`;
+  }
+}
+$('voiceSel').onchange = () => {
+  if(!$('voiceSel').value) return;
+  $('voiceId').value = $('voiceSel').value; saveSettings(); loadVoiceSettings();
+};
+$('voiceId').addEventListener('change', () => {
+  const sel = $('voiceSel'), id = $('voiceId').value.trim();
+  sel.value = [...sel.options].some(o => o.value === id) ? id : '';
+  saveSettings(); loadVoiceSettings();
+});
+
+// ---------- 聲音調整 ----------
+const VS_KEYS = ['speed','stability','similarity_boost','style'];
+const VS_DEFAULT = {speed:1, stability:0.5, similarity_boost:0.75, style:0};
+let vsModified = false;
+function showVoiceSettings(v){
+  for(const k of VS_KEYS){ $(k).value = v[k]; $('v_'+k).textContent = (+v[k]).toFixed(2); }
+}
+function setVsModified(m){
+  vsModified = m;
+  $('vsNote').textContent = m ? '已調整：轉換與試聽都會套用這些設定' : '使用音色在 ElevenLabs 上的設定';
+  try{
+    if(m) localStorage.setItem('el_vs', JSON.stringify({voice: $('voiceId').value.trim(), ...currentVoiceSettings()}));
+    else localStorage.removeItem('el_vs');
+  }catch(e){}
+}
+// 沒有調整時回傳 null：不送 voice_settings，ElevenLabs 會用音色本身的設定
+function currentVoiceSettings(){
+  if(!vsModified) return null;
+  return Object.fromEntries(VS_KEYS.map(k => [k, +$(k).value]));
+}
+async function loadVoiceSettings(){
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem('el_vs')); }catch(e){}
+  if(saved && saved.voice === $('voiceId').value.trim()){ showVoiceSettings(saved); setVsModified(true); return; }
+  vsModified = false; showVoiceSettings(VS_DEFAULT); setVsModified(false);
+  const id = $('voiceId').value.trim();
+  if(!$('apiKey').value.trim() || !id) return;
+  try{
+    const j = await apiGet(`/v1/voices/${encodeURIComponent(id)}/settings`);
+    if(!vsModified) showVoiceSettings(Object.fromEntries(VS_KEYS.map(k => [k, j[k] ?? VS_DEFAULT[k]])));
+  }catch(e){}
+}
+for(const k of VS_KEYS) $(k).addEventListener('input', () => { $('v_'+k).textContent = (+$(k).value).toFixed(2); setVsModified(true); });
+$('vsReset').onclick = () => { try{ localStorage.removeItem('el_vs'); }catch(e){} loadVoiceSettings(); };
+
+// ---------- 試聽 ----------
+let pvAuto = true; // 使用者自己改過試聽文字後，就不再自動帶入
+$('pvText').addEventListener('input', () => { pvAuto = !$('pvText').value.trim(); });
+function previewText(text, limit=150){
+  text = text.trim();
+  if(text.length <= limit) return text;
+  const lastOf = chars => Math.max(...[...chars].map(p => text.lastIndexOf(p, limit-1)));
+  let cut = lastOf('。！？!?\n');
+  if(cut < limit*0.3) cut = lastOf('，,、；; ');
+  return cut > 0 ? text.slice(0, cut+1).trim() : text.slice(0, limit);
+}
+function fillPreviewText(){
+  const first = items.find(i => i.text);
+  if(pvAuto && first) $('pvText').value = previewText(first.text);
+}
+$('pvBtn').onclick = async () => {
+  const key = $('apiKey').value.trim(), voice = $('voiceId').value.trim(), text = $('pvText').value.trim();
+  if(!key || !voice){ $('pvNote').textContent = '請先填入 API Key 與音色'; return; }
+  if(!text){ $('pvNote').textContent = '請先輸入試聽文字，或選擇旁白稿'; return; }
+  saveSettings();
+  $('pvBtn').disabled = true; $('pvNote').textContent = `產生中…（${text.length} 字）`;
+  try{
+    const r = await tts(text, voice, key, $('modelId').value, $('fmt').value, false, currentVoiceSettings());
+    const a = $('pvAudio');
+    if(a.src) URL.revokeObjectURL(a.src);
+    a.src = URL.createObjectURL(new Blob([r.audio], {type:'audio/mpeg'}));
+    a.hidden = false; a.play().catch(() => {});
+    $('pvNote').textContent = `已產生試聽（扣約 ${text.length} 字額度）`;
+    refreshQuota();
+  }catch(e){ $('pvNote').textContent = '試聽失敗：' + e.message; }
+  $('pvBtn').disabled = false;
+};
 
 $('start').onclick = async () => {
   const key = $('apiKey').value.trim(), voice = $('voiceId').value.trim();
   if(!key || !voice){ $('log').textContent = '請先填入 API Key 與 Voice ID'; return; }
   saveSettings();
+  running = true; stopFlag = false; render(); // 先鎖住按鈕，避免查額度期間重複按下
   await refreshQuota();
   const need = items.filter(i => i.status!=='done' && i.text).reduce((n,i) => n + i.text.length, 0);
   if(quota && need > quota.left &&
-     !confirm(`這批約需 ${need.toLocaleString()} 字元，剩餘額度只有 ${quota.left.toLocaleString()}。\n（部分模型每字扣的額度較少，實際可能足夠）\n\n仍要開始轉換嗎？`)) return;
+     !confirm(`這批約需 ${need.toLocaleString()} 字元，剩餘額度只有 ${quota.left.toLocaleString()}。\n（部分模型每字扣的額度較少，實際可能足夠）\n\n仍要開始轉換嗎？`)){
+    running = false; render(); return;
+  }
   $('log').textContent = '';
-  running = true; stopFlag = false; render();
   const model = $('modelId').value, fmt = $('fmt').value, withTs = $('makeSrt').checked;
+  const vs = currentVoiceSettings();
   let wakeLock = null; // 轉換中避免手機螢幕自動關閉
   try{ wakeLock = await navigator.wakeLock?.request('screen'); }catch(e){}
 
@@ -341,13 +476,13 @@ $('start').onclick = async () => {
       let offset = 0;
       const chunks = splitText(it.text);
       // 已成功的段落先留著，重試時不重送、不重複扣額度
-      const cacheKey = [voice, model, fmt, withTs].join('|');
+      const cacheKey = [voice, model, fmt, withTs, JSON.stringify(vs)].join('|');
       if(it.cacheKey !== cacheKey){ it.cacheKey = cacheKey; it.cache = {}; }
       for(let k=0; k<chunks.length; k++){
         const c = chunks[k];
         if(stopFlag) throw new Error('已停止');
         if(chunks.length > 1){ it.msg = `第 ${k+1}/${chunks.length} 段`; render(); }
-        const r = it.cache[c] || (it.cache[c] = await tts(c, voice, key, model, fmt, withTs));
+        const r = it.cache[c] || (it.cache[c] = await tts(c, voice, key, model, fmt, withTs, vs));
         parts.push(r.audio);
         if(align){
           if(!r.align) throw new Error('API 未回傳時間軸，無法產生字幕');
@@ -491,6 +626,8 @@ $('zipBtn').onclick = async () => {
 
 render();
 refreshQuota();
+loadVoices();
+loadVoiceSettings();
 </script>
 </body>
 </html>
