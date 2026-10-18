@@ -104,6 +104,38 @@ def tts(text, voice, key, model, fmt, with_ts):
         return base64.b64decode(j["audio_base64"]), j.get("alignment") or j.get("normalized_alignment")
 
 
+# ---------- 剩餘額度 ----------
+def get_quota(key):
+    """查詢 ElevenLabs 本期額度，回傳 {tier, limit, used, left, reset}；失敗時丟出 ApiError。"""
+    req = urllib.request.Request("https://api.elevenlabs.io/v1/user/subscription", headers={"xi-api-key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as res:
+            j = json.loads(res.read())
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            d = json.loads(e.read()).get("detail", {})
+            detail = (d.get("status") or d.get("message") or "") if isinstance(d, dict) else str(d)
+        except Exception:
+            pass
+        if e.code == 401 and "permission" in detail.lower():
+            raise ApiError(e.code, "此 Key 沒有讀取額度的權限（轉換不受影響）")
+        raise ApiError(e.code, "API Key 無效，無法查詢額度" if e.code == 401 else "無法查詢額度")
+    except urllib.error.URLError as e:
+        raise ApiError("網路錯誤", f"無法查詢額度（{e.reason}）")
+    limit, used = j.get("character_limit") or 0, j.get("character_count") or 0
+    return {"tier": j.get("tier") or "", "limit": limit, "used": used, "left": max(0, limit - used),
+            "reset": j.get("next_character_count_reset_unix")}
+
+
+def format_quota(q):
+    s = (f"方案：{q['tier']}｜" if q["tier"] else "") + f"剩餘 {q['left']:,} / {q['limit']:,}（已用 {q['used']:,}）"
+    if q["reset"]:
+        t = time.localtime(q["reset"])
+        s += f"｜{t.tm_mon}/{t.tm_mday} 重置"
+    return s
+
+
 # ---------- MP3 長度（讓分段後的字幕時間能正確接續） ----------
 _BITRATES = {
     (1, 1): [0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448],
@@ -402,6 +434,17 @@ def main():
 
     total_chars = sum(len(read_text(f)) for f in files)
     print(f"共 {len(files)} 個檔案、約 {total_chars:,} 字元（會依字元數扣 ElevenLabs 額度）")
+    need = sum(len(read_text(f)) for f in files
+               if args.force or not (out_dir_for(f) / f"{f.stem}.mp3").exists())
+    try:
+        q = get_quota(key)
+        print(format_quota(q))
+        if need > q["left"]:
+            print(f"⚠ 這批約需 {need:,} 字元，超過剩餘額度（部分模型每字扣的額度較少，實際可能足夠）")
+            if sys.stdin.isatty() and input("仍要開始轉換嗎？[y/N] ").strip().lower() not in ("y", "yes"):
+                sys.exit("已取消")
+    except ApiError as e:
+        print(f"額度：{str(e).split(' ', 1)[-1]}")
 
     done = skipped = 0
     errors = []
@@ -427,6 +470,11 @@ def main():
         print("\n已停止。")
 
     print(f"\n完成 {done}、略過 {skipped}、失敗 {len(errors)}（共 {len(files)}）")
+    if done:
+        try:
+            print(format_quota(get_quota(key)))
+        except ApiError:
+            pass
     for name, msg in errors:
         print(f"  {name}：{msg}")
     sys.exit(1 if errors else 0)

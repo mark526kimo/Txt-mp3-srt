@@ -44,6 +44,10 @@
   .log{font-size:12px;color:var(--err);margin-top:6px;white-space:pre-wrap}
   a.dl{color:var(--accent);text-decoration:none;font-size:13px;cursor:pointer;margin-right:8px;white-space:nowrap}
   .empty{color:var(--muted);text-align:center;padding:18px 0;font-size:14px}
+  .quota{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+  .quota b{color:var(--text);font-size:15px}
+  .quota .low{color:var(--err)}
+  .quota button{padding:4px 10px;font-size:12px}
   pre.preview{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;max-height:260px;overflow:auto;white-space:pre-wrap;margin:10px 0 0}
 </style>
 </head>
@@ -79,6 +83,7 @@
       <option value="mp3_44100_192">MP3 44.1kHz 192kbps（需較高方案）</option>
       <option value="mp3_44100_64">MP3 44.1kHz 64kbps（較小檔）</option>
     </select>
+    <div class="quota"><span id="quota">填入 API Key 後顯示剩餘額度</span><button id="quotaBtn">重新整理</button></div>
   </div>
 
   <div class="card">
@@ -284,10 +289,42 @@ async function audioDuration(buf, fallback){
   }catch(e){ return fallback; }
 }
 
+// ---------- 剩餘額度 ----------
+let quota = null; // {left, used, limit}
+async function refreshQuota(){
+  const key = $('apiKey').value.trim(), el = $('quota');
+  quota = null;
+  if(!key){ el.textContent = '填入 API Key 後顯示剩餘額度'; return; }
+  el.textContent = '查詢額度中…';
+  try{
+    const res = await fetch('https://api.elevenlabs.io/v1/user/subscription', {headers:{'xi-api-key':key}});
+    if(!res.ok){
+      let d = ''; try{ const j = await res.json(); d = j.detail?.status || j.detail?.message || ''; }catch(e){}
+      el.textContent = res.status === 401 && /permission/i.test(d) ? '此 Key 沒有讀取額度的權限（轉換不受影響）'
+        : res.status === 401 ? 'API Key 無效，無法查詢額度' : `無法查詢額度（${res.status}）`;
+      return;
+    }
+    const j = await res.json();
+    const limit = j.character_limit || 0, used = j.character_count || 0;
+    quota = {limit, used, left: Math.max(0, limit - used)};
+    const reset = j.next_character_count_reset_unix ? new Date(j.next_character_count_reset_unix*1000) : null;
+    const low = limit && quota.left < limit * 0.1;
+    el.innerHTML = (j.tier ? `方案：${esc(String(j.tier))}｜` : '') +
+      `剩餘 <b class="${low?'low':''}">${quota.left.toLocaleString()}</b> / ${limit.toLocaleString()}（已用 ${used.toLocaleString()}）` +
+      (reset ? `｜${reset.getMonth()+1}/${reset.getDate()} 重置` : '');
+  }catch(e){ el.textContent = '無法查詢額度（網路錯誤）'; }
+}
+$('quotaBtn').onclick = refreshQuota;
+$('apiKey').addEventListener('change', refreshQuota);
+
 $('start').onclick = async () => {
   const key = $('apiKey').value.trim(), voice = $('voiceId').value.trim();
   if(!key || !voice){ $('log').textContent = '請先填入 API Key 與 Voice ID'; return; }
   saveSettings();
+  await refreshQuota();
+  const need = items.filter(i => i.status!=='done' && i.text).reduce((n,i) => n + i.text.length, 0);
+  if(quota && need > quota.left &&
+     !confirm(`這批約需 ${need.toLocaleString()} 字元，剩餘額度只有 ${quota.left.toLocaleString()}。\n（部分模型每字扣的額度較少，實際可能足夠）\n\n仍要開始轉換嗎？`)) return;
   $('log').textContent = '';
   running = true; stopFlag = false; render();
   const model = $('modelId').value, fmt = $('fmt').value, withTs = $('makeSrt').checked;
@@ -337,6 +374,7 @@ $('start').onclick = async () => {
       if(/^401/.test(e.message)){ stopFlag = true; }
     }
     render();
+    refreshQuota();
   }
   try{ await wakeLock?.release(); }catch(e){}
   running = false; render();
@@ -452,6 +490,7 @@ $('zipBtn').onclick = async () => {
 };
 
 render();
+refreshQuota();
 </script>
 </body>
 </html>

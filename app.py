@@ -76,7 +76,8 @@ class App:
         self.model = tk.StringVar(value=self._label(MODELS, cfg.get("model", "eleven_v4_turbo")))
         self.fmt = tk.StringVar(value=self._label(FORMATS, cfg.get("format", "mp3_44100_128")))
         ttk.Label(box, text="API Key").grid(row=0, column=0, sticky="w")
-        ttk.Entry(box, textvariable=self.key, show="•").grid(row=0, column=1, columnspan=2, sticky="ew", padx=6)
+        key_entry = ttk.Entry(box, textvariable=self.key, show="•")
+        key_entry.grid(row=0, column=1, columnspan=2, sticky="ew", padx=6)
         ttk.Checkbutton(box, text="記住在這台電腦", variable=self.remember).grid(row=0, column=3, sticky="w")
         ttk.Label(box, text="Voice ID").grid(row=1, column=0, sticky="w", pady=(6, 0))
         ttk.Entry(box, textvariable=self.voice).grid(row=1, column=1, sticky="ew", padx=6, pady=(6, 0))
@@ -86,6 +87,15 @@ class App:
         ttk.Label(box, text="輸出品質").grid(row=2, column=0, sticky="w", pady=(6, 0))
         ttk.Combobox(box, textvariable=self.fmt, values=[l for _, l in FORMATS], state="readonly") \
             .grid(row=2, column=1, columnspan=3, sticky="ew", padx=(6, 0), pady=(6, 0))
+        self.quota = None
+        self.quota_text = tk.StringVar(value="填入 API Key 後顯示剩餘額度")
+        qrow = ttk.Frame(box)
+        qrow.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+        ttk.Label(qrow, text="額度").pack(side="left")
+        ttk.Label(qrow, textvariable=self.quota_text).pack(side="left", padx=(16, 8))
+        ttk.Button(qrow, text="重新整理", command=self.refresh_quota).pack(side="right")
+        key_entry.bind("<FocusOut>", lambda e: self.refresh_quota())
+        key_entry.bind("<Return>", lambda e: self.refresh_quota())
 
         # ② 字幕設定
         box = ttk.LabelFrame(main, text="② 字幕設定", padding=10)
@@ -159,6 +169,8 @@ class App:
                   foreground="gray").grid(row=4, column=0, sticky="w", pady=(8, 0))
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
+        if self.key.get().strip():
+            self.refresh_quota()
         self.root.after(100, self.poll)
 
     # ---------- 設定 ----------
@@ -292,9 +304,40 @@ class App:
                 elif kind == "end":
                     self.set_running(False)
                     self.write_log(data[0])
+                elif kind == "quota":
+                    self.quota, text = data
+                    self.quota_text.set(text)
         except queue.Empty:
             pass
         self.root.after(100, self.poll)
+
+    # ---------- 剩餘額度 ----------
+    def fetch_quota(self, key):
+        """在背景執行緒查詢額度，結果送回介面。"""
+        try:
+            q = core.get_quota(key)
+            self.q.put(("quota", q, core.format_quota(q)))
+        except Exception as e:
+            self.q.put(("quota", None, str(e).split(" ", 1)[-1]))
+
+    def refresh_quota(self):
+        key = self.key.get().strip()
+        if not key:
+            self.quota = None
+            self.quota_text.set("填入 API Key 後顯示剩餘額度")
+            return
+        self.quota_text.set("查詢額度中…")
+        threading.Thread(target=self.fetch_quota, args=(key,), daemon=True).start()
+
+    def pending_chars(self, force):
+        n = 0
+        for f in self.files:
+            if self.status.get(f) == "done":
+                continue
+            out = Path(self.out_dir.get().strip()) if self.out_dir.get().strip() else f.parent
+            if force or not (out / f"{f.stem}.mp3").exists():
+                n += len(core.read_text(f))
+        return n
 
     # ---------- 轉換 ----------
     def start(self):
@@ -307,6 +350,21 @@ class App:
             messagebox.showwarning(APP_NAME, "請先選擇旁白稿")
             return
         self.save_config()
+        try:  # 開始前確認額度夠不夠
+            self.root.config(cursor="watch")
+            self.root.update()
+            q = core.get_quota(key)
+            self.quota = q
+            self.quota_text.set(core.format_quota(q))
+            need = self.pending_chars(self.force.get())
+            if need > q["left"] and not messagebox.askyesno(
+                    APP_NAME, f"這批約需 {need:,} 字元，剩餘額度只有 {q['left']:,}。\n"
+                              "（部分模型每字扣的額度較少，實際可能足夠）\n\n仍要開始轉換嗎？"):
+                return
+        except core.ApiError as e:
+            self.quota_text.set(str(e).split(" ", 1)[-1])
+        finally:
+            self.root.config(cursor="")
         self.stop_flag = False
         self.set_running(True)
         self.worker = threading.Thread(target=self.run, args=(key, args, self.force.get()), daemon=True)
@@ -330,6 +388,7 @@ class App:
                 log(f"轉換中：{f.name}")
                 core.convert(f, out, key, args, log=log, should_stop=lambda: self.stop_flag)
                 self.q.put(("status", f, "done"))
+                self.fetch_quota(key)
                 done += 1
             except core.Stopped:
                 self.q.put(("status", f, "wait"))
