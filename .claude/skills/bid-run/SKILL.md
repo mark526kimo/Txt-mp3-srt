@@ -39,7 +39,7 @@ python3 採購流程/procure.py status --json      # 讀 current / current_dir /
 
 1. `python3 採購流程/procure.py start`（複製範本到階段資料夾；已有的檔不覆蓋）。
 2. 讀 `current_step_file`（`採購流程/steps/…`）並**完全照做**；步驟 7 以後先讀 `steps/_common-memo.md`。
-3. 先讀再寫：`cases/<案號>/STATE.md`（已確認事項與承辦人決定）、前面階段的工作稿、`reference/舊檔/`、`00-input/`。舊檔只借格式與用語，數值一律不得帶入。
+3. 先讀再寫：`cases/<案號>/STATE.md`（已確認事項與承辦人決定）、前面階段的工作稿、`reference/舊檔/`、`reference/法規/`、`00-input/`。舊檔只借格式與用語，數值一律不得帶入。
 4. 產出寫進 `current_dir`。事實性資料（家數、報價、評分、日期、文號）沒有來源就寫 `【待補：…】`，並在結尾列出需要承辦人提供的資料。
 5. 承辦人在對話中做的決定用 `procure.py decide "…"` 記下；要承辦人自己做的事用 `procure.py todo "…"`。
 6. `python3 採購流程/procure.py submit`。

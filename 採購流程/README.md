@@ -48,6 +48,7 @@
 ├── templates/            各階段文件範本（03-approval-memo 依 11506 案已核定簽呈整理）
 ├── references/           field-mapping.md 欄位來源、checklist.md 核對規則、holidays.txt 假日表
 ├── reference/舊檔/        您放的歷史案件（格式與用語依據）
+├── reference/法規/        您放的法規與範本（法源依據）
 ├── scripts/
 │   ├── build_memo_docx.py  簽呈純文字 → 標楷體 docx
 │   ├── fill_template.py    範本套填（{{欄位}} 與 [若 …] 條件段落）
@@ -81,5 +82,5 @@ python3 採購流程/procure.py export
 
 - 產出的簽呈是草稿，檔號、文號、意見欄由公文系統產生。
 - 電子採購網的登入、上傳、送出公告由承辦人自行操作。
-- `cases/` 內含人名與文號，若 repo 會推到外部，請評估是否將 `採購流程/cases/` 與 `reference/舊檔/` 加入 `.gitignore`。
+- `cases/`、`reference/舊檔/`、`reference/法規/` 的內容已列入 .gitignore，不會被 commit 或推到 GitHub。
 - `references/holidays.txt` 是推估的假日表，請依人事行政總處行事曆核對。

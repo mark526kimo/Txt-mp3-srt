@@ -4,3 +4,11 @@ build/
 dist/
 *.spec
 .align/
+
+# 採購流程：案件資料與舊檔含人名、文號，只留在本機
+採購流程/cases/*
+!採購流程/cases/.gitkeep
+採購流程/reference/舊檔/*
+!採購流程/reference/舊檔/README.md
+採購流程/reference/法規/*
+!採購流程/reference/法規/README.md
