@@ -19,7 +19,15 @@
 import argparse
 import datetime as dt
 import math
+import sys
 from pathlib import Path
+
+# Windows 主控台常是 cp950，統一改成 UTF-8 輸出避免中文或符號出錯
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 HOLIDAY_FILE = Path(__file__).resolve().parent.parent / "references" / "holidays.txt"
 WEEK = "一二三四五六日"

@@ -25,6 +25,13 @@ try:
 except ImportError:
     sys.exit("需要 python-docx：pip install python-docx")
 
+# Windows 主控台常是 cp950，統一改成 UTF-8 輸出避免中文或符號出錯
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 LEVELS = [
     (re.compile(r"^(主旨|說明|擬辦)[：:]"), 0, True),
     (re.compile(r"^[一二三四五六七八九十]+、"), 1, False),

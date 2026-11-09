@@ -27,6 +27,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Windows 主控台常是 cp950，統一改成 UTF-8 輸出避免中文或符號出錯
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 ROOT = Path(__file__).resolve().parent
 CASES_DIR = ROOT / "cases"
 TEMPLATES_DIR = ROOT / "templates"

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 採購流程/procure.py brief 2>/dev/null || true"
+            "command": "python3 採購流程/procure.py brief 2>/dev/null || python 採購流程/procure.py brief 2>/dev/null || true"
           }
         ]
       }

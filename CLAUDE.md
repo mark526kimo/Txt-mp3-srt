@@ -7,6 +7,12 @@
 
 以下規則只適用於採購流程相關工作。語言一律使用繁體中文（臺灣公文用語）。
 
+## 執行環境
+
+- Python 指令：先用 `python3`；Windows 上若失敗（找不到或開啟 Microsoft Store）改用 `python` 或 `py -3`，之後整個工作階段沿用能用的那個。
+- 轉檔工具 `pdftotext`、`soffice` 在 Windows 通常沒有：PDF 直接讀檔，doc／docx 用 python-docx，xlsx 用 openpyxl，並在摘要註明讀取方式。
+- 檔案一律以 UTF-8 讀寫。
+
 ## 鐵則（採購流程）
 
 1. **每步結束必須停下來**，列出成果與待確認事項，等承辦人回覆「確認」或修改意見才進下一步。不得連續跑兩步。狀態一律用 `python3 採購流程/procure.py` 的 `start / submit / confirm / revise / skip` 記錄，不得只在對話裡說「已確認」。

@@ -22,6 +22,13 @@ import sys
 from pathlib import Path
 
 
+# Windows 主控台常是 cp950，統一改成 UTF-8 輸出避免中文或符號出錯
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 def main(tpl: str, values_file: str, out: str):
     text = Path(tpl).read_text(encoding="utf-8")
     values = json.loads(Path(values_file).read_text(encoding="utf-8"))
